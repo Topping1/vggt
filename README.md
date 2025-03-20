@@ -1,3 +1,11 @@
+## Changes from official repository
+
+- Tested to run with:
+  - Windows 10
+  - Cuda 12.8
+  - Safetensors model instead of pickle file (.pt) (generally unsafe). Download safetensors file from [here](https://huggingface.co/facebook/VGGT-1B/tree/main). Download `model.safetensors` and `config.json` (not sure if strictly necessary but just in case). Change line 37 of demo_gradio.py file to specify the location of the `model.safetensors` file. As a reference, the line to change looks like this: `model.load_state_dict(load_file("model.safetensors"))`
+  - Python 3.9.
+
 <div align="center">
 <h1>VGGT: Visual Geometry Grounded Transformer</h1>
 
