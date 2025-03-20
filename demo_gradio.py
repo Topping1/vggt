@@ -24,15 +24,17 @@ from vggt.utils.load_fn import load_and_preprocess_images
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
 from vggt.utils.geometry import unproject_depth_map_to_point_map
 
+# New import for safetensors
+from safetensors.torch import load_file
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 print("Initializing and loading VGGT model...")
 # model = VGGT.from_pretrained("facebook/VGGT-1B")  # another way to load the model
 
 model = VGGT()
-_URL = "https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt"
-model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
-
+# load model locally from safetensors file instead of using a .pth file from Hugging Face
+model.load_state_dict(load_file("model.safetensors"))
 
 model.eval()
 model = model.to(device)
@@ -274,13 +276,8 @@ def update_visualization(
 ):
     """
     Reload saved predictions from npz, create (or reuse) the GLB for new parameters,
-    and return it for the 3D viewer. If is_example == "True", skip.
+    and return it for the 3D viewer.
     """
-
-    # If it's an example click, skip as requested
-    if is_example == "True":
-        return None, "No reconstruction available. Please click the Reconstruct button first."
-
     if not target_dir or target_dir == "None" or not os.path.isdir(target_dir):
         return None, "No reconstruction available. Please click the Reconstruct button first."
 
@@ -314,27 +311,9 @@ def update_visualization(
 
 
 # -------------------------------------------------------------------------
-# Example images
-# -------------------------------------------------------------------------
-
-great_wall_video = "examples/videos/great_wall.mp4"
-colosseum_video = "examples/videos/Colosseum.mp4"
-room_video = "examples/videos/room.mp4"
-kitchen_video = "examples/videos/kitchen.mp4"
-fern_video = "examples/videos/fern.mp4"
-single_cartoon_video = "examples/videos/single_cartoon.mp4"
-single_oil_painting_video = "examples/videos/single_oil_painting.mp4"
-pyramid_video = "examples/videos/pyramid.mp4"
-
-
-# -------------------------------------------------------------------------
 # 6) Build Gradio UI
 # -------------------------------------------------------------------------
-theme = gr.themes.Ocean()
-theme.set(
-    checkbox_label_background_fill_selected="*button_primary_background_fill",
-    checkbox_label_text_color_selected="*button_primary_text_color",
-)
+theme = gr.themes.Default()
 
 with gr.Blocks(
     theme=theme,
@@ -375,10 +354,9 @@ with gr.Blocks(
         padding: 10px 0;
         box-sizing: border-box;
     }
-    """,
-) as demo:
+""") as demo:
 
-    # Instead of gr.State, we use a hidden Textbox:
+    # Instead of gr.State, we use hidden Textboxes:
     is_example = gr.Textbox(label="is_example", visible=False, value="None")
     num_images = gr.Textbox(label="num_images", visible=False, value="None")
 
@@ -401,20 +379,16 @@ with gr.Blocks(
         <li><strong>Visualize:</strong> The 3D reconstruction will appear in the viewer on the right. You can rotate, pan, and zoom to explore the model, and download the GLB file. Note the visualization of 3D points may be slow for a large number of input images.</li>
         <li>
         <strong>Adjust Visualization (Optional):</strong>
-        After reconstruction, you can fine-tune the visualization using the options below
-        <details style="display:inline;">
-            <summary style="display:inline;">(<strong>click to expand</strong>):</summary>
+        After reconstruction, you can fine-tune the visualization using the options below:
             <ul>
             <li><em>Confidence Threshold:</em> Adjust the filtering of points based on confidence.</li>
             <li><em>Show Points from Frame:</em> Select specific frames to display in the point cloud.</li>
             <li><em>Show Camera:</em> Toggle the display of estimated camera positions.</li>
-            <li><em>Filter Sky / Filter Black Background:</em> Remove sky or black-background points.</li>
+            <li><em>Filter Sky / Filter Black or White Background:</em> Remove sky or background points.</li>
             <li><em>Select a Prediction Mode:</em> Choose between "Depthmap and Camera Branch" or "Pointmap Branch."</li>
             </ul>
-        </details>
         </li>
     </ol>
-    <p><strong style="color: #0ea5e9;">Please note:</strong> <span style="color: #0ea5e9; font-weight: bold;">VGGT typically reconstructs a scene in less than 1 second. However, visualizing 3D points may take tens of seconds due to third-party rendering, which are independent of VGGT's processing time. </span></p>
     </div>
     """
     )
@@ -467,71 +441,6 @@ with gr.Blocks(
                     mask_sky = gr.Checkbox(label="Filter Sky", value=False)
                     mask_black_bg = gr.Checkbox(label="Filter Black Background", value=False)
                     mask_white_bg = gr.Checkbox(label="Filter White Background", value=False)
-
-    # ---------------------- Examples section ----------------------
-    examples = [
-        [colosseum_video, "22", None, 20.0, False, False, True, False, "Depthmap and Camera Branch", "True"],
-        [pyramid_video, "30", None, 35.0, False, False, True, False, "Depthmap and Camera Branch", "True"],
-        [single_cartoon_video, "1", None, 15.0, False, False, True, False, "Depthmap and Camera Branch", "True"],
-        [single_oil_painting_video, "1", None, 20.0, False, False, True, True, "Depthmap and Camera Branch", "True"],
-        [room_video, "8", None, 5.0, False, False, True, False, "Depthmap and Camera Branch", "True"],
-        [kitchen_video, "25", None, 50.0, False, False, True, False, "Depthmap and Camera Branch", "True"],
-        [fern_video, "20", None, 45.0, False, False, True, False, "Depthmap and Camera Branch", "True"],
-    ]
-
-    def example_pipeline(
-        input_video,
-        num_images_str,
-        input_images,
-        conf_thres,
-        mask_black_bg,
-        mask_white_bg,
-        show_cam,
-        mask_sky,
-        prediction_mode,
-        is_example_str,
-    ):
-        """
-        1) Copy example images to new target_dir
-        2) Reconstruct
-        3) Return model3D + logs + new_dir + updated dropdown + gallery
-        We do NOT return is_example. It's just an input.
-        """
-        target_dir, image_paths = handle_uploads(input_video, input_images)
-        # Always use "All" for frame_filter in examples
-        frame_filter = "All"
-        glbfile, log_msg, dropdown = gradio_demo(
-            target_dir, conf_thres, frame_filter, mask_black_bg, mask_white_bg, show_cam, mask_sky, prediction_mode
-        )
-        return glbfile, log_msg, target_dir, dropdown, image_paths
-
-    gr.Markdown("Click any row to load an example.", elem_classes=["example-log"])
-
-    gr.Examples(
-        examples=examples,
-        inputs=[
-            input_video,
-            num_images,
-            input_images,
-            conf_thres,
-            mask_black_bg,
-            mask_white_bg,
-            show_cam,
-            mask_sky,
-            prediction_mode,
-            is_example,
-        ],
-        outputs=[
-            reconstruction_output,
-            log_output,
-            target_dir_output,
-            frame_filter,
-            image_gallery,
-        ],
-        fn=example_pipeline,
-        cache_examples=False,
-        examples_per_page=50,
-    )
 
     # -------------------------------------------------------------------------
     # "Reconstruct" button logic:
