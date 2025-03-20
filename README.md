@@ -4,7 +4,9 @@
   - Windows 10
   - Cuda 12.8
   - Safetensors model instead of pickle file (.pt) (generally unsafe). Download safetensors file from [here](https://huggingface.co/facebook/VGGT-1B/tree/main). Download `model.safetensors` and `config.json` (not sure if strictly necessary but just in case). Change line 37 of demo_gradio.py file to specify the location of the `model.safetensors` file. As a reference, the line to change looks like this: `model.load_state_dict(load_file("model.safetensors"))`
-  - Python 3.9.
+  - Python 3.9. Running with python 3.9 breaks the functionality of the "Examples" of the Gradio interface. The modified `demo_gradio.py` removes the examples part of the Gradio interface, but you can always load each of the examples manually.
+- For some reason the requirements file of this repo specifices a non-Cuda Pytorch. This causes the `demo_gradio.py` to fail. You have to uninstall first the CPU version of Pytorch via `pip uninstall -y torch torchvision`, then install Cuda-Enabled version of Pytorch with `pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu128` (this is to install Pytorch for Cuda 12.8, other versions might work, please see [here](https://pytorch.org/) for instructions to install Pytorch for other Cuda versions)
+
 
 <div align="center">
 <h1>VGGT: Visual Geometry Grounded Transformer</h1>
